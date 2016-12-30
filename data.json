@@ -1,0 +1,7 @@
+{
+"name": "json",
+"age": 25,
+"data":{
+ "ok": true
+}
+}

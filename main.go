@@ -21,13 +21,16 @@ import (
 //json:- ignores field
 
 
-var schema = `
+const schema = `
 CREATE TABLE users (
     name varchar,
     age integer,
     data json
-);
-`
+);`
+
+
+const insert_query = `INSERT INTO events VALUES (:data)`
+
 
 func functest(c *gin.Context) {
 	var l models.User
@@ -107,22 +110,27 @@ func main() {
 	routes.POST("/users", iController.Create)
 */
 
+	// Prepared named, util para usar objetos en query
+	//all_users, _ := db.PrepareNamed(`SELECT * FROM users where name=:name`)
 
+	// En cambio prepared se le pasa los argumentos sin estructura
+	all_users, _ := db.Preparex(`SELECT * FROM users where name=$1`)
 
 	routes.GET("/users", func(c *gin.Context) {
 		var users [] UserShort
-		err := db.Select(&users, "SELECT * FROM users")
-		
+		//err := db.Select(&users, "SELECT * FROM users")
+		err := all_users.Select(&users, "leo") //map[string]interface{}{"name": "leo"})
+
 		if err != nil{
 			fmt.Println("error with rows", err)
 		}
 		c.JSON(200, users)
 	})
 
-	routes.GET("/users/create", func(c *gin.Context) {
-		var emptyJSON = types.JSONText("{}")
-		user := UserShort{"alf", 21, emptyJSON}
-		_, err = db.NamedExec(`INSERT INTO users(name,age) VALUES (:name,:age)`, &user) 
+	routes.POST("/users", func(c *gin.Context) {
+		var user UserShort
+		c.BindJSON(&user)
+		_, err = db.NamedExec(`INSERT INTO users(name,age,data) VALUES (:name,:age,:data)`, &user) 
 		
 		if err != nil{
 			fmt.Println("error insert", err)
@@ -130,6 +138,24 @@ func main() {
 		c.JSON(200, user)
 	})
 
+
+	routes.POST("/data", func(c *gin.Context) {
+		var user types.JSONText
+		c.BindJSON(&user)
+		_, err = db.NamedExec(insert_query, map[string]interface{}{"data": user}) 
+		c.JSON(200, user)
+	})
+
+/*	
+	type Event struct{
+		Data types.JSONText 
+	}*/
+
+	routes.GET("/data", func(c *gin.Context) {
+		var events [] types.JSONText
+		_ = db.Select(&events, "select data::JSON #>'{data,ok}' from events") 
+		c.JSON(200, events)
+	})
 
 
 	routes.GET("/ping", func(c *gin.Context) {

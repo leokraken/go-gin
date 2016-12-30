@@ -1,0 +1,2 @@
+# Post with json file
+curl -H "Content-Type: application/json" --data @data.json http://localhost:8080/data
