@@ -4,16 +4,29 @@ import (
 	"github.com/gin-gonic/gin"
 	"fmt"
 	"net/http"
-	"github.com/jinzhu/gorm"
-	_ "github.com/jinzhu/gorm/dialects/postgres"
+	// database drivers
+	_ "github.com/lib/pq"
+	"github.com/jmoiron/sqlx"
+	"github.com/jmoiron/sqlx/types"
+
+	//"github.com/jinzhu/gorm"
+	//_ "github.com/jinzhu/gorm/dialects/postgres"
 	"github.com/dgrijalva/jwt-go"
 	"time"
 	"./models"
-	"./controllers"
+	//"./controllers"
 )
 
 //json:- ignores field
 
+
+var schema = `
+CREATE TABLE users (
+    name varchar,
+    age integer,
+    data json
+);
+`
 
 func functest(c *gin.Context) {
 	var l models.User
@@ -58,10 +71,22 @@ func createToken(){
 
 }
 
+type UserShort struct{
+	Name string `json:"name"`
+	Age int `json:"age"`
+	Data types.JSONText `json:"data"`
+}
 
 func main() {
 	routes := gin.Default()
 
+	db, err := sqlx.Connect("postgres", "host=localhost user=postgres dbname=postgres password=postgres sslmode=disable")
+	if err != nil {
+		fmt.Println("error", err)
+	}else{
+		fmt.Println("success",db)
+	}
+/*
 	db, err := gorm.Open("postgres", "host=localhost user=postgres dbname=postgres sslmode=disable password=password")
 	if err == nil {
 		fmt.Println("Ok connected")
@@ -76,13 +101,41 @@ func main() {
 
 	iController= controller
 
+
+	routes.GET("/users/:userid", iController.Get)
+	routes.POST("/users", iController.Create)
+*/
+
+
+
+	routes.GET("/users", func(c *gin.Context) {
+		var users [] UserShort
+		err := db.Select(&users, "SELECT * FROM users")
+		
+		if err != nil{
+			fmt.Println("error with rows", err)
+		}
+		c.JSON(200, users)
+	})
+
+	routes.GET("/users/create", func(c *gin.Context) {
+		var emptyJSON = types.JSONText("{}")
+		user := UserShort{"alf", 21, emptyJSON}
+		_, err = db.NamedExec(`INSERT INTO users(name,age) VALUES (:name,:age)`, &user) 
+		
+		if err != nil{
+			fmt.Println("error insert", err)
+		}
+		c.JSON(200, user)
+	})
+
+
+
 	routes.GET("/ping", func(c *gin.Context) {
 		createToken()
 		c.String(200, "pong")
 	})
 
-	routes.GET("/users/:userid", iController.Get)
-	routes.POST("/users", iController.Create)
 
 	routes.Run()
 }
