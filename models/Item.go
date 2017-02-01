@@ -12,4 +12,6 @@ type Item struct {
 	Description string `json:"description"`
 	Price       int `json:"-"`
 	Object  utils.JSONRaw `sql:"type:JSONB NOT NULL DEFAULT '{}'::JSONB" json:"object"`
+	Userid       string `json:"userid"`
+
 }

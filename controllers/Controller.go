@@ -5,6 +5,7 @@ import (
 	"../models"
 	"../services"
 	"github.com/jinzhu/gorm"
+	"strconv"
 )
 
 type ServiceController struct {
@@ -18,13 +19,9 @@ func NewController(db *gorm.DB) *ServiceController{
 
 
 func (ctrl *ServiceController) Get(c *gin.Context) {
-	var userId = c.Params.ByName("userid")
+	var userId, _ = strconv.Atoi(c.Params.ByName("userid"))
 	var user *models.User = ctrl.UserService.Get(userId)
-	if user == nil{
-		c.JSON(404, "User not found ")
-	}else {
-		c.JSON(200, user)
-	}
+	c.JSON(200, user)
 }
 
 

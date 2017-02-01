@@ -10,10 +10,10 @@ type UserService struct{
 }
 
 
-func (srv * UserService) Get(userId string) * models.User{
+func (srv * UserService) Get(id int) * models.User{
 	var user models.User
-	proy := []string{"username"}
-	if err := srv.DB.Where("username = ?", userId).Select(proy).First(&user).Error; err != nil {
+	proy := []string{"id", "name"}
+	if err := srv.DB.Where("id = ?", id).Select(proy).First(&user).Error; err != nil {
 		return nil
 	}else{
 		return &user

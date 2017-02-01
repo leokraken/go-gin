@@ -4,74 +4,57 @@ import (
 	"github.com/gin-gonic/gin"
 	"fmt"
 	"net/http"
-	"encoding/json"
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/postgres"
 	"github.com/dgrijalva/jwt-go"
 	"time"
 	"./models"
 	"./controllers"
+	"runtime"
+	_ "github.com/lib/pq"
+	"github.com/jmoiron/sqlx"
+	"./utils"
 )
+type RolesMap map[string]bool
 
-func hasRole(userRoles []string, roles []string) bool{
-	for _, u := range userRoles{
-		for _, r :=range roles{
-			if r == u{
-				return true
-			}
+func hasRole(userRoles RolesMap, roles RolesMap) bool {
+	// Order n userRoles length
+	for key, _ := range userRoles {
+		_, ok := roles[key]
+		if ok {
+			return true
 		}
 	}
 	return false
 }
 
-func authMiddleware(roles []string) gin.HandlerFunc {
-
-
+func authMiddleware(roles RolesMap) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var token = c.Request.Header.Get("Authorization")
-		fmt.Println("Header ", token)
-
 		decodedToken, _ := jwt.ParseWithClaims(token, &CustomClaims{}, func(token *jwt.Token) (interface{}, error) {
 			return []byte("here"), nil
 		})
 
-		if claims, ok := decodedToken.Claims.(*CustomClaims); ok && decodedToken.Valid {
-			if hasRole(claims.Roles, []string{"admin"}){
-				fmt.Println("OK HAS ADMIN ROLE")
-			}
-			//fmt.Printf("%v %v %v \n", claims.UserId, claims.StandardClaims.Issuer, claims.ExpiresAt)
-		} else {
-			//fmt.Println(err)
-			c.JSON(http.StatusUnauthorized, "unauthorized")
+
+		claims, ok := decodedToken.Claims.(*CustomClaims);
+
+		if !ok || !decodedToken.Valid || !hasRole(claims.Roles, roles) {
+			c.String(http.StatusUnauthorized, "unauthorized")
 			c.Abort()
-
 		}
-	}
-}
-
-func functest(c *gin.Context) {
-	var l models.User
-	c.BindJSON(&l)
-	fmt.Printf("%s %s", l.Username, l.Password)
-	if l.Password != "pass" {
-		c.JSON(http.StatusUnauthorized, gin.H{"status": "Fail"})
-	}else {
-		c.JSON(http.StatusOK, gin.H{
-			"message": "auth",
-		})
 	}
 }
 
 type CustomClaims struct {
 	UserId string
-	Roles [] string
+	Roles  RolesMap
 	jwt.StandardClaims
 }
 
 func createToken() string {
 
-	claims := &CustomClaims{"yeah", []string{ "user"},  jwt.StandardClaims{
-		ExpiresAt: time.Now().Add(time.Minute * 5).Unix(),
+	claims := &CustomClaims{"yeah", RolesMap{"user": true}, jwt.StandardClaims{
+		ExpiresAt: time.Now().Add(time.Minute * 10).Unix(),
 		Issuer:    "test",
 	}}
 	mySigningKey := []byte("here")
@@ -83,26 +66,44 @@ func createToken() string {
 
 }
 
-func testMaps(){
-	hashmap := make(map[string] string)
-	hashmap["hola"]= "hola"
-	hashmap["esto"]="esta bueno"
-	jsonString, _:= json.Marshal(hashmap)
-	fmt.Println(string(jsonString))
+
+/*
+func rawsql (c * gin.Context){
+	id := 1
+	u := models.User{}
+	err := db2.QueryRow("select id, name from users where id = $1", id).Scan(&u.Id, &u.Name)
+	if err!= nil{
+		fmt.Println(err)
+	}
+	//users = append(users, u)
+
+	c.JSON(200, u)
+}*/
+
+
+func pong2(c *gin.Context) {
+	fmt.Println("Ejecuta esto")
+	c.String(200, "pong handler")
 }
+
 
 
 func main() {
 
-	testMaps()
-	routes := gin.Default()
+	runtime.GOMAXPROCS(runtime.NumCPU())
+	gin.SetMode(gin.ReleaseMode)
+
+	routes := gin.New()
 
 	db, err := gorm.Open("postgres", "host=localhost user=postgres dbname=postgres sslmode=disable password=password")
+	db.DB().SetMaxOpenConns(20)
 	if err == nil {
 		fmt.Println("Ok connected")
 	}
 
-	db.AutoMigrate(&models.Item{}, &models.User{})
+	db2, _ := sqlx.Connect("postgres", "user=postgres dbname=postgres sslmode=disable")
+
+	db.AutoMigrate(&models.Item{}, &models.User{}, &models.Place{}, &models.Specialism{})
 
 	controller := controllers.NewController(db)
 	itemController := controllers.NewItemController(db)
@@ -111,23 +112,90 @@ func main() {
 
 	iController = controller
 
-	//routes.Use(authMiddleware([]string{"admin"}))
 
-	routes.GET("/token", func(c * gin.Context) {
+	gin.SetMode(gin.ReleaseMode)
+	db2.SetMaxOpenConns(20)
+
+
+
+	//routes.GET("/users/:userid", controller.Get)
+	routes.GET("/users/:userid", func(c *gin.Context) {
+		id := 1
+		u := models.User{}
+		db.First(&u, "id=?", id)
+		//err := db2.Get(&u, "select * from users where id = $1", id)//"select users.id, json_agg(items.*) as items from users join items on(items.userid=users.id) where users.id = $1 group by users.id", id)
+		if err != nil {
+			fmt.Println(err)
+		}
+
+		//items := [] models.Item{}
+		//json.Unmarshal(u.Items, &items)
+		//fmt.Println(items)
+		c.JSON(200, u)
+	})
+
+	routes.POST("/users", iController.Create)
+	routes.GET("/items", itemController.Get)
+	routes.POST("/items", itemController.Create)
+
+	routes.GET("/ping2", authMiddleware(RolesMap{"user":true}), pong2)
+
+	routes.GET("/ping", func(c *gin.Context) {
+		c.JSON(200, gin.H{"says":"pong"})
+	})
+
+
+	/**
+	Specialties
+	 */
+	routes.GET("/specialties", func(c *gin.Context){
+		var specialties = []models.Specialism{}
+		db.Find(&specialties)
+		c.JSON(200, specialties)
+	})
+
+
+	/**
+		Supply token
+	 */
+	routes.GET("/token", func(c *gin.Context) {
+
 		var token string = createToken()
 		c.JSON(200, gin.H{"token": token})
 	})
 
-	routes.GET("/ping", func(c *gin.Context) {
-		c.String(200, "pong")
+
+	routes.GET("/parallel", func(c *gin.Context) {
+		var opts utils.RequestOptions
+		opts.Host = "api.sarem.uy"
+		opts.Path = "/api/especialidades"
+
+		ch1 := make(chan utils.Response)
+		ch2 := make(chan utils.Response)
+
+		go func(){
+			ch1 <- utils.Get(opts)
+		}()
+
+		go func(){
+			ch2<- utils.Get(opts)
+		}()
+		res1 :=<- ch1
+		res2 :=<- ch2
+
+		results := make(map[string] utils.JSONResponse)
+		if res1.Error == nil{
+			results["r1"]= res1.Message
+		}
+
+		if res2.Error == nil{
+			results["r2"]= res2.Message
+		}
+		fmt.Println(results)
+		c.JSON(200, results)
 	})
 
-	routes.GET("/users/:userid", iController.Get)
-	routes.POST("/users", iController.Create)
-
-	routes.GET("/items", itemController.Get)
-	routes.POST("/items", itemController.Create)
 
 
-	routes.Run()
+	routes.Run(":8080")
 }
