@@ -5,15 +5,16 @@ import (
 	"encoding/json"
 	"time"
 	"net/url"
-	"fmt"
 	"errors"
+	"fmt"
 )
+
 type JSONResponse interface {
 
 }
 
 type Response struct {
-	Error error
+	Error   error
 	Message JSONResponse
 }
 
@@ -27,9 +28,13 @@ type RequestOptions struct {
 	Body   interface{}
 }
 
+type Specialty struct {
+	Descripcion map[string]interface{}
+	Id          int
+	Tipo        map[string]interface{}
+}
 
-
-func Get(options RequestOptions) Response {
+func Get(options RequestOptions, src interface{}) Response {
 	resp := Response{};
 
 	var u = &url.URL{}
@@ -56,14 +61,14 @@ func Get(options RequestOptions) Response {
 		u.RawQuery = q.Encode()
 	}
 
-	fmt.Println(u.String())
 	res, err := client.Get(u.String())
 	if err != nil {
 		resp.Error = err
+		fmt.Println(err)
 		return resp
 	}
 	defer res.Body.Close()
-	json.NewDecoder(res.Body).Decode(&resp.Message)
-
+	json.NewDecoder(res.Body).Decode(&src)
+	resp.Message = src
 	return resp
 }

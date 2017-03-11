@@ -174,11 +174,16 @@ func main() {
 		ch2 := make(chan utils.Response)
 
 		go func(){
-			ch1 <- utils.Get(opts)
+			var r1 []utils.Specialty
+			l:=utils.Get(opts, &r1)
+			fmt.Println("adasds", r1)
+			l.Message= r1
+			ch1 <- l
 		}()
 
 		go func(){
-			ch2<- utils.Get(opts)
+			var r2 utils.Specialty
+			ch2<- utils.Get(opts, r2)
 		}()
 		res1 :=<- ch1
 		res2 :=<- ch2
@@ -190,6 +195,11 @@ func main() {
 
 		if res2.Error == nil{
 			results["r2"]= res2.Message
+		}
+
+		for _, v := range res1.Message.([] utils.Specialty){
+			fmt.Println(v.Id)
+			//fmt.Println(v.(map[string] interface{})["id"])
 		}
 		fmt.Println(results)
 		c.JSON(200, results)
